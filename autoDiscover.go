@@ -18,6 +18,14 @@ import (
 const (
 	WebLogicIcon  = "fa fa-lg fa-file"
 	WebLogicColor = "#5d9cec"
+	DomainIcon    = "fa fa-lg fa-angle-right"
+	DomainColor   = "#5d9cec"
+	LinuxIcon     = "fa fa-lg fa-file"
+	LinuxColor    = "#26C6DA"
+	LoginURL      = "http://10.211.55.8:3000/auth/signin"
+	PostCiURL     = "http://10.211.55.8:3000/cfgitems"
+	UserName      = "tpuser"
+	PassWord      = "tpuser123"
 )
 
 type Login struct {
@@ -25,16 +33,36 @@ type Login struct {
 	PassWord string `json:"password"`
 }
 type WebLogicCi struct {
-	Type          string `json:"type"`
-	SubType       string `json:"subtype"`
-	Icon          string `json:"icon"`
-	Color         string `json:"color"`
-	Name          string `json:"name"`
-	Iname         string `json:"iname"`
 	ListenAddress string `json:"listenAddress"`
 	ListenPort    string `json:"listenPort"`
 	HostName      string `json:"hostName"`
 	DomainName    string `json:"domainName"`
+	BasicCI
+}
+
+type BasicCI struct {
+	Type    string `json:"type"`
+	SubType string `json:"subtype"`
+	Icon    string `json:"icon"`
+	Color   string `json:"color"`
+	Name    string `json:"name"`
+	Iname   string `json:"iname"`
+}
+type DomainCi struct {
+	AdminAddress string `json:"adminAddress"`
+	AdminPort    string `json:"adminPort"`
+	HostNames    string `json:"hostNames"`
+	LogPath      string `json:"logPath"`
+	WebLogicHome string `json:"webLogicHome"`
+	ProdHome     string `json:"prodHome"`
+	DomainPath   string `json:"domainPath"`
+	BasicCI
+}
+
+type LinuxCi struct {
+	Ip      string `json:"ip"`
+	Version string `json:"version"`
+	BasicCI
 }
 
 type XmlResult struct {
@@ -101,7 +129,7 @@ func GetRuntimeJavaInfo() ([]map[string]string, []string) {
 
 		runtimeJavaInfo := map[string]string{}
 		runtimeJavaInfo["webLogicHome"] = webLogicHome
-		runtimeJavaInfo["prodHome"] = prodHome
+		runtimeJavaInfo["prodHome"] = prodHome[:len(prodHome)-1]
 		runtimeJavaInfo["webLogicName"] = webLogicName
 		runtimeJavaInfo["webLogicPort"] = webLogicPort
 		managedServerIndex := strings.Index(v, "-Dweblogic.management.server=")
@@ -164,6 +192,12 @@ func main() {
 	localHostName := runShell("hostname")
 	if localHostName == "false" {
 		log.Fatal("localHostName get failed")
+	} else {
+
+		if localHostName == "localhost.localdoamin" {
+			log.Fatal("localHostName get failed, it is localhost.localdoamin")
+
+		}
 	}
 	linuxCiName := fmt.Sprintf("%s_%s", localIp, localHostName)
 	linuxIname := localHostName
@@ -173,7 +207,6 @@ func main() {
 	linuxCi[2] = linuxIp
 	release := runShell("lsb_release -a| grep Release | awk -F ' ' '{print $2}'")
 	linuxCi[3] = release
-	fmt.Println("LinuxCi:", linuxCi)
 
 	for _, prodHome := range prodHomes {
 		domainPath := path.Join(prodHome, "user_projects/domains")
@@ -250,7 +283,8 @@ func main() {
 
 						wlsCiname := fmt.Sprintf("%s_%s_%s_%s", listenAddress, listenPort, domainName, serverName)
 						wlsIname := serverName
-						wlsHost := listenAddress
+						wlsHost := fmt.Sprintf("%s_%s", listenAddress, localHostName)
+						//wlsHost := listenAddress
 						wlsListenAddress := listenAddress
 						wlsListenPort := listenPort
 						wlsDomain := ""
@@ -307,21 +341,63 @@ func main() {
 
 		}
 	}
-
-	fmt.Println("wlsCIs:", wlsCis)
-	fmt.Println("domainCis:", domainCis)
-	cookie := LoginTpUser("tpuser", "tpuser123", "http://10.211.55.8:3000/auth/signin")
+	fmt.Println("====================LinuxCI====================")
+	fmt.Println(linuxCi)
+	fmt.Println("====================WebLogicCIs====================")
+	fmt.Println(wlsCis)
+	fmt.Println("====================DomainCIs====================")
+	fmt.Println(domainCis)
+	cookie := LoginTpUser(UserName, PassWord, LoginURL)
+	fmt.Println("====================POST OS.LINUX CI====================")
+	osCi := LinuxCi{}
+	osCi.Type = "os"
+	osCi.SubType = "linux"
+	osCi.Icon = LinuxIcon
+	osCi.Color = LinuxColor
+	osCi.Name = linuxCi[0]
+	osCi.Iname = linuxCi[1]
+	osCi.Ip = linuxCi[2]
+	osCi.Version = linuxCi[3]
+	postCiJson, _ := json.Marshal(osCi)
+	PostCI(linuxCi[0], postCiJson, PostCiURL, cookie)
+	fmt.Println("====================POST WEBLOGIC.SERVR CI====================")
 	for _, wlsCi := range wlsCis {
-		webLogicCi := WebLogicCi{}
-		webLogicCi.Type = "wls"
-		wlsCi[0] = wlsCiname
-		wlsCi[1] = wlsIname
-		wlsCi[2] = wlsListenAddress
-		wlsCi[3] = wlsListenPort
-		wlsCi[4] = wlsHost
-		wlsCis[wlsCiIndex-1][5] = wlsDomain
+		webLogicServerCi := WebLogicCi{}
+		webLogicServerCi.Type = "wls"
+		webLogicServerCi.SubType = "wls.server"
+		webLogicServerCi.Icon = WebLogicIcon
+		webLogicServerCi.Color = WebLogicColor
+		webLogicServerCi.Name = wlsCi[0]
+		webLogicServerCi.Iname = wlsCi[1]
+		webLogicServerCi.ListenAddress = wlsCi[2]
+		webLogicServerCi.ListenPort = wlsCi[3]
+		webLogicServerCi.HostName = wlsCi[4]
+		webLogicServerCi.DomainName = wlsCi[5]
+		postCiJson, _ := json.Marshal(webLogicServerCi)
+		PostCI(wlsCi[0], postCiJson, PostCiURL, cookie)
 
 	}
+	fmt.Println("====================POST WEBLOGIC.DOMAIN CI====================")
+	for _, domainCi := range domainCis {
+		webLogicDomainCi := DomainCi{}
+		webLogicDomainCi.Type = "wls"
+		webLogicDomainCi.SubType = "wls.domain"
+		webLogicDomainCi.Icon = DomainIcon
+		webLogicDomainCi.Color = DomainColor
+		webLogicDomainCi.Name = domainCi[0]
+		webLogicDomainCi.Iname = domainCi[1]
+		webLogicDomainCi.AdminAddress = domainCi[2]
+		webLogicDomainCi.AdminPort = domainCi[3]
+		webLogicDomainCi.HostNames = domainCi[4]
+		webLogicDomainCi.LogPath = domainCi[5]
+		webLogicDomainCi.ProdHome = domainCi[6]
+		webLogicDomainCi.WebLogicHome = domainCi[7]
+		webLogicDomainCi.DomainPath = domainCi[8]
+		postCiJson, _ := json.Marshal(webLogicDomainCi)
+		PostCI(domainCi[0], postCiJson, PostCiURL, cookie)
+
+	}
+
 }
 
 func RemoveDuplicatesAndEmpty(a []string) (ret []string) {
@@ -349,22 +425,32 @@ func LoginTpUser(username string, password string, loginUrl string) (cookie stri
 	if err != nil {
 		fmt.Println("login failed")
 		panic(err)
+	} else {
+		cookie = strings.Split(resp.Header["Set-Cookie"][0], ";")[0]
+		defer resp.Body.Close()
+		return cookie
 	}
-	cookie = strings.Split(resp.Header["Set-Cookie"][0], ";")[0]
-	defer resp.Body.Close()
-	return cookie
 
 }
 
-func PostCI(ciSlice []byte, postUrl string, cookie string) {
+func PostCI(ciname string, ciSlice []byte, postUrl string, cookie string) {
+	fmt.Println("post ciname:", ciname)
 	req, _ := http.NewRequest("POST", postUrl, bytes.NewBuffer(ciSlice))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", cookie)
 	client := &http.Client{}
 	resp, err := client.Do(req)
+	//defer resp.Body.Close()
 	if err != nil {
 		fmt.Println("post ci failed, post json:", string(ciSlice))
+		fmt.Println(err)
 		//panic(err)
+	} else {
+
+		fmt.Println("post ci ok, post json:", string(ciSlice))
+		fmt.Println("response code", resp.Status)
+		defer resp.Body.Close()
 	}
-	defer resp.Body.Close()
+	fmt.Println("*****************************************")
+
 }
